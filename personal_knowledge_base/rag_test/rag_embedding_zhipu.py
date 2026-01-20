@@ -46,9 +46,9 @@ vectordb = Chroma.from_documents(
     embedding=embedding,
     persist_directory=persist_directory  # 允许我们将persist_directory目录保存到磁盘上
 )
-# print(f"向量库中存储的数量：{vectordb._collection.count()}")
+print(f"向量库中存储的数量：{vectordb._collection.count()}")
 
-question="什么是大语言模型"
+question="南瓜书是什么？"
 
 # sim_docs = vectordb.similarity_search(question,k=3)
 # print(f"检索到的内容数：{len(sim_docs)}")

@@ -1,16 +1,8 @@
 import streamlit as st
 from langchain_openai import ChatOpenAI
-import os
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableBranch, RunnablePassthrough
-import sys
-
-from personal_knowledge_base.langchain.construct_query import qa_prompt
-
-target_dir = r"/tmp/pycharm_project_246/personal_knowledge_base/rag_test"
-# 把目标文件夹添加到系统路径，Python就能检索到这个目录下的所有.py文件
-sys.path.append(target_dir) # 将父目录放入系统路径中
 from zhipuai_embedding import ZhipuAIEmbeddings
 from langchain_community.vectorstores import Chroma
 
@@ -23,7 +15,7 @@ def get_retriever():
     # 定义 Embeddings
     embedding = ZhipuAIEmbeddings()
     # 向量数据库持久化路径
-    persist_directory = '/tmp/pycharm_project_246/personal_knowledge_base/langchain/chroma'
+    persist_directory = 'D://LLMLearning//pxf77//personal_knowledge_base//langchain//chroma'
     # 加载数据库
     vectordb = Chroma(
         persist_directory=persist_directory,

@@ -1,8 +1,6 @@
 import sys
 import os
-target_dir = r"/tmp/pycharm_project_246/personal_knowledge_base/rag_test"
 # 把目标文件夹添加到系统路径，Python就能检索到这个目录下的所有.py文件
-sys.path.append(target_dir) # 将父目录放入系统路径中
 
 # 使用智谱 Embedding API，注意，需要将上一章实现的封装代码下载到本地
 from zhipuai_embedding import ZhipuAIEmbeddings

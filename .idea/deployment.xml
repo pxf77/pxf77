@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="root@region-41.seetacloud.com:48654 agent" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@connect.cqa1.seetacloud.com:48695 password" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="root@connect.cqa1.seetacloud.com:29857 agent">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@connect.cqa1.seetacloud.com:48695 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/pycharm_project_96" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
