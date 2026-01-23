@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ],
+      "env": {
+        "PLAYWRIGHT_MCP_LOG": "info",
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}
