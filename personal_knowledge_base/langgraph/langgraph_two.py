@@ -1,8 +1,9 @@
 import requests
 from langchain_core.tools import tool
+from langgraph.errors import GraphRecursionError
 from pydantic import BaseModel, Field
 from langchain_classic.chat_models import init_chat_model
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 class WeatherQuery(BaseModel):
     loc: str = Field(description="城市名称")
@@ -49,7 +50,8 @@ model = init_chat_model(
 
 tools = [get_weather, write_file]
 
-agent = create_react_agent(model=model, tools=tools)
+agent = create_agent(model=model, tools=tools)
+# 并联调用
 # response = agent.invoke(
 #     {
 #         "messages": [
@@ -63,15 +65,34 @@ agent = create_react_agent(model=model, tools=tools)
 #
 # print(response['messages'])
 
-response = agent.invoke(
-    {
-        "messages": [
-            {
-                "role": "user",
-                "content": "北京和杭州现在的天气如何?并把查询结果写入文件中"
-            }
-        ]
-    }
-)
+# 串联调用
+# response = agent.invoke(
+#     {
+#         "messages": [
+#             {
+#                 "role": "user",
+#                 "content": "北京和杭州现在的天气如何?并把查询结果写入文件中"
+#             }
+#         ]
+#     }
+# )
+#
+# print(response['messages'])
 
-print(response['messages'])
+try:
+    response = agent.invoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "北京现在的天气如何"
+                }
+            ],
+        },
+        {
+            "recursion_limit": 4
+        },
+    )
+    print(response['messages'][-1].content)
+except GraphRecursionError:
+    print('智能体由于超过最多调用次数而停止')
