@@ -1,0 +1,45 @@
+from langgraph.graph import StateGraph
+from langgraph.graph import START, END
+
+# 创建一个字典类型的State
+builder = StateGraph(dict)
+
+def addition(state):
+    print(f'加法节点收到的初始值:{state}')
+    return {"x": state["x"] + 1}
+
+def subtraction(state):
+    print(f'减法节点收到的初始值:{state}')
+    return {"x": state["x"] - 2}
+
+# 向图中添加两个节点
+builder.add_node("addition", addition)
+builder.add_node("subtraction", subtraction)
+
+# 构建节点之间的边
+builder.add_edge(START, "addition")
+builder.add_edge("addition", "subtraction")
+builder.add_edge("subtraction", END)
+
+graph = builder.compile()
+# graph.get_graph().print_ascii()
+
+initial_state={"x": 10}
+
+result = graph.invoke(initial_state)
+
+# print('最后的结果:', result)
+
+from pydantic import BaseModel
+
+class MyState(BaseModel):
+    x: int
+    y: str = "default"   # 设置默认值
+
+# 自动校验
+state = MyState(x=1)
+print(state.x)       # 输出 1
+print(state.y)       # 输出 default
+
+# 错误类型会报错
+state = MyState(x="abc")
