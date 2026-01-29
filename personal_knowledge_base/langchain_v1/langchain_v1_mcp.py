@@ -3,9 +3,16 @@ import asyncio
 from langchain.chat_models import init_chat_model
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
+from langchain.agents.structured_output import AutoStrategy
+from pydantic import BaseModel
+
+class Result(BaseModel):
+    loc1: str
+    loc2: str
+    distance: float
 
 model = init_chat_model(
-    model="deepseek-v3.2",
+    model="qwen-plus",
     model_provider='openai',
     base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     api_key="sk-b80528668e704e7b9e13d169b86e6102",
@@ -29,10 +36,33 @@ mcp_client = MultiServerMCPClient(
     }
 )
 
-async def get_server_tools():
-    tools = await mcp_client.get_tools()
-    print(f"加载了{len(tools)}: {[t.name for t in tools]}")
+# async def get_server_tools():
+#     tools = await mcp_client.get_tools()
+#     print(f"加载了{len(tools)}: {[t.name for t in tools]}")
 
+
+
+# asyncio.run(get_server_tools())
+
+async def get_server_tools():
+    mcp_tools = await mcp_client.get_tools()
+    print(f"加载了{len(mcp_tools)}个工具: {[t.name for t in mcp_tools]}")
+    agent_with_mcp = create_agent(
+        model,
+        tools=mcp_tools,
+        system_prompt="你是一个高德地图规划助手，能帮我规划形成和获得地图基本信息",
+        response_format=AutoStrategy(Result)
+    )
+    result = await agent_with_mcp.ainvoke(
+        {
+            "messages":{
+                "role": 'user',
+                "content": "请告诉我北京圆明园到北京西北旺地铁站距离"
+            }
+        }
+    )
+    for msg in result['messages']:
+        msg.pretty_print()
 
 
 asyncio.run(get_server_tools())
