@@ -1,4 +1,6 @@
 import json
+import re
+
 import uvicorn
 
 from typing import List, Dict, Any, AsyncGenerator
@@ -14,6 +16,7 @@ from langchain.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.messages import BaseMessage
 
 from utils import ImageProcessor, AudioProcessor
+from pdf_utils import PDFProcessor
 
 app = FastAPI(
     title="多模态 RAG 工作台 API",
@@ -56,15 +59,18 @@ class ContentBlock(BaseModel):
 class MessageRequest(BaseModel):
     content_blocks: List[ContentBlock] = Field(default=[], description="内容块")
     history: List[Dict[str, Any]] = Field(default=[], description="对话历史")
+    pdf_chunks: List[Dict[str, Any]] = Field(default=[], description="PDF文档块信息，用于引用溯源")
 
 
 class MessageResponse(BaseModel):
     content: str
     timestamp: str
     role: str
+    references: List[Dict[str, Any]]  # PDF的引用
 
 
-def create_multimodal_message(request: MessageRequest, image_file: UploadFile | None, audio_file:UploadFile | None) -> HumanMessage:
+def create_multimodal_message(request: MessageRequest, image_file: UploadFile | None,
+                              audio_file: UploadFile | None) -> HumanMessage:
     """创建多模态消息"""
     message_content = []
 
@@ -89,6 +95,7 @@ def create_multimodal_message(request: MessageRequest, image_file: UploadFile | 
                 "url": f"data:{mime_type};base64,{base64_audio}"
             },
         })
+
     # 处理内容块
     for i, block in enumerate(request.content_blocks):
         if block.type == "text":
@@ -114,6 +121,21 @@ def create_multimodal_message(request: MessageRequest, image_file: UploadFile | 
                     },
                 })
 
+    if request.pdf_chunks:
+        pdf_content = "\n\n=== 参考文档内容 ===\n"
+        for i, chunk in enumerate(request.pdf_chunks):
+            content = chunk.get("content", "")
+            source_info = chunk.get("metadata", {}).get(
+                "source_info", f"文档块 {i}")
+            pdf_content += f"\n[{i}] {content}\n来源: {source_info}\n"
+        pdf_content += "\n请在回答时引用相关内容，使用格式如 [1]、[2] 等。\n"
+
+        for i in range(len(message_content) - 1, -1, -1):
+            item = message_content[i]
+            if item['type'] == 'text':
+                item['text'] += pdf_content
+                break
+
     return HumanMessage(content=message_content)
 
 
@@ -127,6 +149,7 @@ def convert_history_to_messages(history: List[Dict[str, Any]]) -> List[BaseMessa
         1. 与用户对话的能力。
         2. 图像内容识别和分析能力(OCR, 对象检测， 场景理解)
         3. 音频转写与分析
+        4. 知识检索与问答
 
         重要指导原则：
         - 当用户上传图片并提出问题时，请结合图片内容和用户的具体问题来回答
@@ -135,7 +158,14 @@ def convert_history_to_messages(history: List[Dict[str, Any]]) -> List[BaseMessa
         - 如果图片包含文字，请准确识别并在回答中引用
         - 如果用户只上传图片没有问题，则提供图片的全面分析
 
-        请以专业、准确、友好的方式回答
+        引用格式要求（重要）：
+        - 当回答基于提供的参考文档内容时，必须在相关信息后添加引用标记，格式为[1]、[2]等
+        - 引用标记应紧跟在相关内容后面，如："这是重要信息[1]"
+        - 每个不同的文档块使用对应的引用编号
+        - 如果用户消息中包含"=== 参考文档内容 ==="部分，必须使用其中的内容来回答问题并添加引用
+        - 只需要在正文中使用角标引用，不需要在最后列出"参考来源"
+
+        请以专业、准确、友好的方式回答，并严格遵循引用格式。当有参考文档时，优先使用文档内容回答。
     """
 
     messages.append(SystemMessage(content=system_prompt))
@@ -178,7 +208,8 @@ def convert_history_to_messages(history: List[Dict[str, Any]]) -> List[BaseMessa
 
 
 async def generate_streaming_response(
-        messages: List[BaseMessage]
+        messages: List[BaseMessage],
+        pdf_chunks: List[Dict[str, Any]] = None
 ) -> AsyncGenerator[str, None]:
     """生成流式响应"""
     try:
@@ -201,11 +232,15 @@ async def generate_streaming_response(
                 }
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
+        # 提取引用信息
+        references = extract_references_from_content(full_response, pdf_chunks) if pdf_chunks else []
+
         # 发送完成信号
         final_data = {
             "type": "message_complete",
             "full_content": full_response,
             "timestamp": datetime.now().isoformat(),
+            "references": references
         }
         yield f"data: {json.dumps(final_data, ensure_ascii=False)}\n\n"
     except Exception as e:
@@ -217,12 +252,40 @@ async def generate_streaming_response(
         yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
 
+def extract_references_from_content(content: str, pdf_chunks: list = None) -> list:
+    print('模型输出内容:', content)
+    references = []
+
+    reference_pattern = r'[(\d+)]'
+    matches = re.findall(reference_pattern, content)
+    print(matches)
+
+    if matches and pdf_chunks:
+        for match in matches:
+            ref_num = int(match)
+            if ref_num <= len(pdf_chunks):
+                chunk = pdf_chunks[ref_num]  # 索引从0开始
+                reference = {
+                    "id": ref_num,
+                    "text": chunk.get("content", "")[:200] + "..." if len(
+                        chunk.get("content", "")) > 200 else chunk.get("content", ""),
+                    "source": chunk.get("metadata", {}).get("source", "未知来源"),
+                    "page": chunk.get("metadata", {}).get("page_number", 1),
+                    "chunk_id": chunk.get("metadata", {}).get("chunk_id", 0),
+                    "source_info": chunk.get("metadata", {}).get("source_info", "未知来源")
+                }
+                references.append(reference)
+
+    return references
+
+
 @app.post("/api/chat/stream")
 async def chat_stream(
         image_file: UploadFile | None = File(None),
         content_blocks: str = Form(default="[]"),
         history: str = Form(default="[]"),
-        audio_file: UploadFile | None = File(None)
+        audio_file: UploadFile | None = File(None),
+        pdf_file: UploadFile | None = File(None)
 ):
     """流式聊天接口（支持多模态）"""
     try:
@@ -233,8 +296,14 @@ async def chat_stream(
         except json.JSONDecodeError as e:
             raise HTTPException(status_code=400, detail=f"JSON 解析错误: {str(e)}")
 
-        # 创建请求对象（用于传递给其他函数）
-        request_data = MessageRequest(content_blocks=content_blocks_data, history=history_data)
+        if pdf_file:
+            pdf_processor = PDFProcessor()
+            pdf_content = await pdf_file.read()
+            pdf_chunks = await pdf_processor.process_pdf(file_content=pdf_content, filename=pdf_file.filename)
+            request_data = MessageRequest(content_blocks=content_blocks_data, history=history_data, pdf_chunks=pdf_chunks)
+        else:
+            # 创建请求对象（用于传递给其他函数）
+            request_data = MessageRequest(content_blocks=content_blocks_data, history=history_data)
 
         # 转换消息历史
         messages = convert_history_to_messages(request_data.history)
@@ -242,10 +311,11 @@ async def chat_stream(
         # 添加当前用户消息（支持多模态）
         current_message = create_multimodal_message(request_data, image_file=image_file, audio_file=audio_file)
         messages.append(current_message)
+        print(messages)
 
         # 返回流式响应
         return StreamingResponse(
-            generate_streaming_response(messages),
+            generate_streaming_response(messages, pdf_chunks if pdf_file is not None else None),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
